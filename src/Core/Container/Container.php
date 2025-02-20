@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Framework\Core\Container;
 
-use Framework\Core\Container\Contracts\ContainerInterface;
+use Framework\Core\Container\Contracts\{ContainerInterface, ServiceProviderInterface};
 use Framework\Core\Container\Exceptions\{ContainerException, NotFoundException};
 use Framework\Core\Container\Attributes\{Service, Inject};
 use Framework\Core\Configuration\Contracts\ConfigurationInterface;
@@ -25,10 +25,10 @@ use Closure;
  * - Otomatik constructor injection
  * - Singleton instance yönetimi
  * - Döngüsel bağımlılık tespiti
- * - Service tagging desteği
+ * - Service tagging sistemi
  * 
  * @package Framework\Core\Container
- * @author [Ahmet ALTUN]
+ * @author [Yazarın Adı]
  * @version 1.0.0
  * @since 1.0.0
  */
@@ -36,39 +36,45 @@ class Container implements ContainerInterface
 {
     /**
      * Servis binding'lerini tutan array.
-     * 
      * @var array<string,Closure|string|object|null>
      */
     private array $bindings = [];
 
     /**
      * Singleton instance'ları tutan array.
-     * 
      * @var array<string,object>
      */
     private array $singletons = [];
 
     /**
      * Servis parametrelerini tutan array.
-     * 
      * @var array<string,array<string,mixed>>
      */
     private array $parameters = [];
 
     /**
      * Çözümleme sırasında oluşan bağımlılık zincirini tutan array.
-     * Döngüsel bağımlılıkları tespit etmek için kullanılır.
-     * 
      * @var array<string>
      */
     private array $resolutionStack = [];
 
     /**
      * Tag'lenmiş servisleri tutan array.
-     * 
      * @var array<string,array<string>>
      */
     private array $tagged = [];
+
+    /**
+     * Register edilmiş provider'ları tutan array.
+     * @var array<class-string,ServiceProviderInterface>
+     */
+    private array $providers = [];
+
+    /**
+     * Boot edilmiş provider'ları tutan array.
+     * @var array<class-string,bool>
+     */
+    private array $bootedProviders = [];
 
     /**
      * {@inheritdoc}
@@ -78,9 +84,19 @@ class Container implements ContainerInterface
         // Concrete tip belirtilmemişse abstract'ı kullan
         $concrete = $concrete ?? $abstract;
 
-        // Closure'a çevir
-        $this->bindings[$abstract] = $this->getClosure($abstract, $concrete);
-        
+        // Eğer concrete bir instance ise, her zaman aynı instance'ı döndüren bir closure oluştur
+        if (is_object($concrete) && !$concrete instanceof Closure) {
+            $concrete = fn() => $concrete;
+        }
+
+        // Eğer concrete bir Closure değilse, instance oluşturan bir closure oluştur
+        if (!$concrete instanceof Closure && is_string($concrete)) {
+            $concrete = fn($container, $params = []) => $container->build($concrete, array_merge($parameters, $params));
+        }
+
+        // Binding'i kaydet
+        $this->bindings[$abstract] = $concrete;
+
         // Parametreleri kaydet
         if (!empty($parameters)) {
             $this->parameters[$abstract] = $parameters;
@@ -92,21 +108,9 @@ class Container implements ContainerInterface
      */
     public function singleton(string $abstract, string|object|callable|null $concrete = null, array $parameters = []): void
     {
-        // Servis attribute'unu kontrol et
-        if (is_string($concrete) && class_exists($concrete)) {
-            $reflector = new ReflectionClass($concrete);
-            $attributes = $reflector->getAttributes(Service::class);
-            
-            if (!empty($attributes)) {
-                /** @var Service */
-                $serviceAttribute = $attributes[0]->newInstance();
-                $parameters = array_merge($serviceAttribute->getParameters(), $parameters);
-            }
-        }
-
-        // Binding'i oluştur
+        // Önce normal binding oluştur
         $this->bind($abstract, $concrete, $parameters);
-        
+
         // Singleton olarak işaretle
         $this->singletons[$abstract] = true;
     }
@@ -158,10 +162,93 @@ class Container implements ContainerInterface
     }
 
     /**
+     * Servisleri tag'ler ile işaretler.
+     * 
+     * @param string|array<string> $abstracts Tag'lenecek servisler
+     * @param string $tag Tag adı
+     * @return void
+     */
+    public function tag(string|array $abstracts, string $tag): void
+    {
+        $abstracts = is_array($abstracts) ? $abstracts : [$abstracts];
+
+        foreach ($abstracts as $abstract) {
+            $this->tagged[$tag][] = $abstract;
+        }
+    }
+
+    /**
+     * Belirli bir tag ile işaretlenmiş tüm servisleri döndürür.
+     * 
+     * @param string $tag Tag adı
+     * @return array<object> Tag'li servisler
+     */
+    public function tagged(string $tag): array
+    {
+        if (!isset($this->tagged[$tag])) {
+            return [];
+        }
+
+        return array_map(
+            fn($abstract) => $this->get($abstract),
+            $this->tagged[$tag]
+        );
+    }
+
+    /**
+     * Bir ServiceProvider'ı container'a kaydeder ve başlatır.
+     * 
+     * @param class-string|ServiceProviderInterface $provider Provider sınıfı veya instance'ı
+     * @param bool $boot Provider'ı hemen boot etmek için true
+     * @return void
+     */
+    public function addProvider(string|ServiceProviderInterface $provider, bool $boot = true): void
+    {
+        // Provider instance'ını al
+        $provider = is_string($provider) ? new $provider() : $provider;
+        
+        // Provider class adını al
+        $providerClass = get_class($provider);
+        
+        // Zaten kayıtlı mı kontrol et
+        if (isset($this->providers[$providerClass])) {
+            return;
+        }
+        
+        // Bağımlılıkları kaydet
+        foreach ($provider->dependencies() as $dependency) {
+            $this->addProvider($dependency, false);
+        }
+        
+        // Provider'ı kaydet
+        $this->providers[$providerClass] = $provider;
+        
+        // Register
+        $provider->register($this);
+        
+        // Boot
+        if ($boot) {
+            $this->bootProvider($provider);
+        }
+    }
+
+    /**
+     * Kayıtlı tüm provider'ları boot eder.
+     * 
+     * @return void
+     */
+    public function bootProviders(): void
+    {
+        foreach ($this->providers as $provider) {
+            $this->bootProvider($provider);
+        }
+    }
+
+    /**
      * Bir servise ait instance'ı çözümler.
      * 
      * @param string $abstract Çözümlenecek servis
-     * @param array<string,mixed> $parameters Override edilecek parametreler 
+     * @param array<string,mixed> $parameters Override edilecek parametreler
      * @return mixed Çözümlenen instance
      * 
      * @throws ContainerException Çözümleme hatası
@@ -180,16 +267,17 @@ class Container implements ContainerInterface
         $this->resolutionStack[] = $abstract;
 
         try {
-            // Singleton kontrolü
-            if (isset($this->singletons[$abstract])) {
-                return $this->singletons[$abstract];
+            // Daha önce oluşturulmuş singleton var mı?
+            if (isset($this->singletons[$abstract]) && isset($this->bindings[$abstract])) {
+                return $this->bindings[$abstract];
             }
 
-            // Binding kontrolü
+            // Binding var mı?
             if (!isset($this->bindings[$abstract])) {
                 if (!class_exists($abstract)) {
                     throw NotFoundException::serviceNotFound($abstract);
                 }
+                // Otomatik binding oluştur
                 $this->bind($abstract);
             }
 
@@ -201,7 +289,7 @@ class Container implements ContainerInterface
 
             // Singleton ise kaydet
             if (isset($this->singletons[$abstract])) {
-                $this->singletons[$abstract] = $instance;
+                $this->bindings[$abstract] = $instance;
             }
 
             return $instance;
@@ -209,30 +297,6 @@ class Container implements ContainerInterface
             // Çözümleme stack'inden çıkar
             array_pop($this->resolutionStack);
         }
-    }
-
-    /**
-     * Verilen concrete tip için bir Closure oluşturur.
-     * 
-     * @param string $abstract Abstract tip
-     * @param string|object|callable $concrete Concrete tip
-     * @return Closure Instance oluşturacak closure
-     */
-    protected function getClosure(string $abstract, string|object|callable $concrete): Closure
-    {
-        // Concrete closure ise direkt döndür
-        if ($concrete instanceof Closure) {
-            return $concrete;
-        }
-
-        // Concrete instance ise onu döndüren closure oluştur
-        if (is_object($concrete)) {
-            return fn() => $concrete;
-        }
-
-        // String ise build eden closure oluştur
-        return fn(Container $container, array $parameters = []) =>
-            $container->build($concrete, $parameters);
     }
 
     /**
@@ -253,6 +317,12 @@ class Container implements ContainerInterface
             // Abstract class kontrolü
             if (!$reflector->isInstantiable()) {
                 throw NotFoundException::concreteNotFound($concrete);
+            }
+
+            // Service attribute kontrolü
+            $serviceAttribute = $this->getServiceAttribute($reflector);
+            if ($serviceAttribute !== null) {
+                $parameters = array_merge($serviceAttribute->getParameters(), $parameters);
             }
 
             // Constructor parametrelerini çözümle
@@ -342,6 +412,22 @@ class Container implements ContainerInterface
     }
 
     /**
+     * Sınıf üzerindeki Service attribute'unu alır.
+     * 
+     * @param ReflectionClass $reflector Kontrol edilecek sınıf
+     * @return Service|null Bulunan attribute veya null
+     */
+    protected function getServiceAttribute(ReflectionClass $reflector): ?Service
+    {
+        $attributes = $reflector->getAttributes(Service::class);
+        if (empty($attributes)) {
+            return null;
+        }
+
+        return $attributes[0]->newInstance();
+    }
+
+    /**
      * Parametre üzerindeki Inject attribute'unu alır.
      * 
      * @param ReflectionParameter $parameter Kontrol edilecek parametre
@@ -400,6 +486,8 @@ class Container implements ContainerInterface
      * @param string $id Çözümlenecek ID
      * @param ReflectionParameter $parameter İlgili parametre
      * @return mixed Çözümlenen değer
+     * 
+     * @throws ContainerException Çözümleme hatası
      */
     protected function resolveById(string $id, ReflectionParameter $parameter): mixed
     {
@@ -429,5 +517,34 @@ class Container implements ContainerInterface
         }
         
         return $value;
+    }
+
+    /**
+     * Bir ServiceProvider'ı boot eder.
+     * 
+     * @param ServiceProviderInterface $provider Boot edilecek provider
+     * @return void
+     */
+    protected function bootProvider(ServiceProviderInterface $provider): void
+    {
+        $providerClass = get_class($provider);
+        
+        // Zaten boot edilmiş mi kontrol et
+        if (isset($this->bootedProviders[$providerClass])) {
+            return;
+        }
+        
+        // Bağımlılıkları boot et
+        foreach ($provider->dependencies() as $dependency) {
+            if (isset($this->providers[$dependency])) {
+                $this->bootProvider($this->providers[$dependency]);
+            }
+        }
+        
+        // Provider'ı boot et
+        $provider->boot($this);
+        
+        // Boot edildi olarak işaretle
+        $this->bootedProviders[$providerClass] = true;
     }
 }
