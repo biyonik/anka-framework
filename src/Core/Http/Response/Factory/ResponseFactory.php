@@ -23,7 +23,7 @@ use Psr\Http\Message\{ResponseFactoryInterface, ResponseInterface, StreamInterfa
  * 
  * @package Framework\Core\Http
  * @subpackage Response\Factory
- * @author [Yazarın Adı]
+ * @author [Ahmet ALTUN]
  * @version 1.0.0
  * @since 1.0.0
  */
