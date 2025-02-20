@@ -7,9 +7,9 @@ namespace Framework\Core\Container;
 use Framework\Core\Container\Contracts\ContainerInterface;
 use Framework\Core\Container\Exceptions\{ContainerException, NotFoundException};
 use Framework\Core\Container\Attributes\{Service, Inject};
+use Framework\Core\Configuration\Contracts\ConfigurationInterface;
 use ReflectionClass;
 use ReflectionParameter;
-use ReflectionAttribute;
 use Closure;
 
 /**
@@ -403,7 +403,31 @@ class Container implements ContainerInterface
      */
     protected function resolveById(string $id, ReflectionParameter $parameter): mixed
     {
-        // TODO: Implement configuration based injection
-        throw new ContainerException('ID bazlı injection henüz implement edilmedi.');
+        // Konfigürasyon servisini al
+        $config = $this->get(ConfigurationInterface::class);
+        
+        // Konfigürasyon değerini çek
+        $value = $config->get($id);
+        
+        // Değer bulunamadıysa ve parametre zorunlu değilse default değeri kullan
+        if ($value === null && $parameter->isDefaultValueAvailable()) {
+            return $parameter->getDefaultValue();
+        }
+        
+        // Değer bulunamadıysa ve parametre zorunluysa hata fırlat
+        if ($value === null) {
+            throw ContainerException::autowireFailed(
+                $parameter->getDeclaringClass()->getName(),
+                $parameter->getName()
+            );
+        }
+        
+        // Tip dönüşümü yap
+        $type = $parameter->getType();
+        if ($type !== null && $type->isBuiltin()) {
+            settype($value, $type->getName());
+        }
+        
+        return $value;
     }
 }
