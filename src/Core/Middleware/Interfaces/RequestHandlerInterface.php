@@ -22,7 +22,7 @@ use Psr\Http\Message\{ServerRequestInterface, ResponseInterface};
  *
  * @package Framework\Core\Middleware
  * @subpackage Interfaces
- * @author [Yazarın Adı]
+ * @author [Ahmet ALTUN]
  * @version 1.0.0
  * @since 1.0.0
  */
