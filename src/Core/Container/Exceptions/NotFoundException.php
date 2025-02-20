@@ -5,6 +5,8 @@ declare(strict_types = 1);
 namespace Framework\Core\Container\Exceptions;
 
 
+use Psr\Container\NotFoundExceptionInterface;
+
 /**
  * Container'da bulunamayan servisleri temsil eden exception sınıfı.
  * 
@@ -29,7 +31,7 @@ namespace Framework\Core\Container\Exceptions;
  * );
  * ```
  */
-class NotFoundException extends ContainerException implements \Psr\Container\NotFoundExceptionInterface
+class NotFoundException extends ContainerException implements NotFoundExceptionInterface
 {
     /**
      * Bulunamayan servis için özel bir exception oluşturur.

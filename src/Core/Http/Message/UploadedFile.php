@@ -43,11 +43,6 @@ class UploadedFile implements UploadedFileInterface
     private ?StreamInterface $stream = null;
 
     /**
-     * Dosyanın geçici yolu.
-     */
-    private ?string $file;
-
-    /**
      * Dosya taşındı mı?
      */
     private bool $moved = false;

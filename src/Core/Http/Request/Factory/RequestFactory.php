@@ -6,14 +6,11 @@ namespace Framework\Core\Http\Request\Factory;
 
 use Framework\Core\Http\Request\Request;
 use Framework\Core\Http\Message\{Stream, Uri, UploadedFile};
-use Psr\Http\Message\{
-    RequestFactoryInterface,
+use Psr\Http\Message\{RequestFactoryInterface,
     RequestInterface,
-    UriInterface,
-    StreamInterface,
     ServerRequestFactoryInterface,
-    ServerRequestInterface
-};
+    UriInterface,
+    ServerRequestInterface};
 
 /**
  * Request nesnelerini oluşturmak için factory sınıfı.

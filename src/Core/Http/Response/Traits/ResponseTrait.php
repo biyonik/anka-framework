@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Framework\Core\Http\Response\Traits;
 
-use Framework\Core\Http\Message\Stream;
 use InvalidArgumentException;
 use RuntimeException;
 

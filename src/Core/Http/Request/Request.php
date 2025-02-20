@@ -159,7 +159,7 @@ class Request implements RequestInterface
      * 
      * @param array<string,mixed> $server $_SERVER array
      * @param array<string,mixed> $query $_GET array
-     * @param array<string,mixed> $body $_POST array
+     * @param Stream $body $_POST array
      * @param array<string,mixed> $cookies $_COOKIE array
      * @param array<string,mixed> $files $_FILES array
      * @return static
@@ -167,7 +167,7 @@ class Request implements RequestInterface
     public static function fromGlobals(
         array $server = [],
         array $query = [],
-        array $body = [],
+        array $body,
         array $cookies = [],
         array $files = []
     ): static {
@@ -441,7 +441,7 @@ class Request implements RequestInterface
         return $this->uri;
     }
 
-    public function withUri(UriInterface $uri, bool $preserveHost = false): static
+    public function withUri(mixed $uri, bool $preserveHost = false): static
     {
         if ($uri === $this->uri) {
             return $this;
