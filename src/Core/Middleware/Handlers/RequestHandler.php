@@ -17,7 +17,7 @@ use InvalidArgumentException;
  *
  * @package Framework\Core\Middleware
  * @subpackage Handlers
- * @author [Yazarın Adı]
+ * @author [Ahmet ALTUN]
  * @version 1.0.0
  * @since 1.0.0
  */
