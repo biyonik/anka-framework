@@ -27,7 +27,7 @@ Modern PHP 8+ tabanlı, yüksek performanslı ve sıradışı bir PHP framework.
 ## 🛠 Kurulum
 
 ```bash
-composer create-project your-vendor/framework-name project-name
+composer create-project ahmetaltun/anka project-name
 ```
 
 ## 📂 Proje Yapısı
