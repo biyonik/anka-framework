@@ -179,14 +179,14 @@ class QueryBus implements QueryBusInterface
      */
     protected function validateQuery(QueryInterface $query): void
     {
-        $rules = $query->validationRules();
+        $validationResult = $query->validate();
 
-        if (empty($rules)) {
-            return;
+        if ($validationResult->hasErrors()) {
+            throw new QueryValidationException(
+                $validationResult->getErrors(),
+                'Query validation failed'
+            );
         }
-
-        // TODO: Validation işlemleri burada yapılacak
-        // Framework'ün Validation bileşeni eklendiğinde burada kullanılacak
     }
 
     /**

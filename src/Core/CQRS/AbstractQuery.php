@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace Framework\Core\CQRS;
 
 use Framework\Core\CQRS\Contracts\QueryInterface;
+use Framework\Core\Validation\Contracts\ValidationSchemaInterface;
+use Framework\Core\Validation\ValidationResult;
+use Framework\Core\Validation\ValidationSchema;
 use ReflectionClass;
 use ReflectionProperty;
 
@@ -59,7 +62,30 @@ abstract class AbstractQuery implements QueryInterface
      */
     public function validationRules(): array
     {
-        return [];
+        return $this->buildValidationSchema()->toCQRSRules();
+    }
+
+    /**
+     * Query için validasyon şeması oluşturur.
+     *
+     * Alt sınıflar bu metodu override ederek kendi validasyon şemalarını tanımlayabilir.
+     *
+     * @return ValidationSchemaInterface Validasyon şeması
+     */
+    protected function buildValidationSchema(): ValidationSchemaInterface
+    {
+        // Varsayılan olarak boş şema döndür
+        return ValidationSchema::make();
+    }
+
+    /**
+     * Query verilerini doğrular.
+     *
+     * @return ValidationResult Doğrulama sonucu
+     */
+    public function validate(): ValidationResult
+    {
+        return $this->buildValidationSchema()->validate($this->getParameters());
     }
 
     /**
@@ -67,6 +93,7 @@ abstract class AbstractQuery implements QueryInterface
      *
      * @param array<string, mixed> $data Query parametreleri
      * @return static Query nesnesi
+     * @throws \ReflectionException
      */
     public static function fromArray(array $data): static
     {
@@ -92,7 +119,7 @@ abstract class AbstractQuery implements QueryInterface
      */
     public static function fromJson(string $json): static
     {
-        $data = json_decode($json, true);
+        $data = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
 
         if (json_last_error() !== JSON_ERROR_NONE) {
             throw new \InvalidArgumentException('Invalid JSON format: ' . json_last_error_msg());
@@ -108,6 +135,6 @@ abstract class AbstractQuery implements QueryInterface
      */
     public function toJson(): string
     {
-        return json_encode($this->getParameters());
+        return json_encode($this->getParameters(), JSON_THROW_ON_ERROR);
     }
 }

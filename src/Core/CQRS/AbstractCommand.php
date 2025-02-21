@@ -5,6 +5,10 @@ declare(strict_types=1);
 namespace Framework\Core\CQRS;
 
 use Framework\Core\CQRS\Contracts\CommandInterface;
+use Framework\Core\Validation\Contracts\ValidationSchemaInterface;
+use Framework\Core\Validation\ValidationResult;
+use Framework\Core\Validation\ValidationSchema;
+use Random\RandomException;
 use ReflectionClass;
 use ReflectionProperty;
 
@@ -30,6 +34,7 @@ abstract class AbstractCommand implements CommandInterface
      * Command oluşturulduğunda çağrılır.
      *
      * @return void
+     * @throws RandomException
      */
     public function initialize(): void
     {
@@ -59,6 +64,7 @@ abstract class AbstractCommand implements CommandInterface
      * Command için unique ID oluşturur.
      *
      * @return string Benzersiz ID
+     * @throws RandomException
      */
     protected function generateCommandId(): string
     {
@@ -102,7 +108,30 @@ abstract class AbstractCommand implements CommandInterface
      */
     public function validationRules(): array
     {
-        return [];
+        return $this->buildValidationSchema()->toCQRSRules();
+    }
+
+    /**
+     * Command için validasyon şeması oluşturur.
+     *
+     * Alt sınıflar bu metodu override ederek kendi validasyon şemalarını tanımlayabilir.
+     *
+     * @return ValidationSchemaInterface Validasyon şeması
+     */
+    protected function buildValidationSchema(): ValidationSchemaInterface
+    {
+        // Varsayılan olarak boş şema döndür
+        return ValidationSchema::make();
+    }
+
+    /**
+     * Command verilerini doğrular.
+     *
+     * @return ValidationResult Doğrulama sonucu
+     */
+    public function validate(): ValidationResult
+    {
+        return $this->buildValidationSchema()->validate($this->toArray());
     }
 
     /**
@@ -110,6 +139,7 @@ abstract class AbstractCommand implements CommandInterface
      *
      * @param array<string, mixed> $data Command verileri
      * @return static Command nesnesi
+     * @throws \ReflectionException
      */
     public static function fromArray(array $data): static
     {
@@ -137,7 +167,7 @@ abstract class AbstractCommand implements CommandInterface
      */
     public static function fromJson(string $json): static
     {
-        $data = json_decode($json, true);
+        $data = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
 
         if (json_last_error() !== JSON_ERROR_NONE) {
             throw new \InvalidArgumentException('Invalid JSON format: ' . json_last_error_msg());
@@ -153,6 +183,6 @@ abstract class AbstractCommand implements CommandInterface
      */
     public function toJson(): string
     {
-        return json_encode($this->toArray());
+        return json_encode($this->toArray(), JSON_THROW_ON_ERROR);
     }
 }

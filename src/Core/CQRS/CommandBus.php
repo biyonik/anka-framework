@@ -179,14 +179,14 @@ class CommandBus implements CommandBusInterface
      */
     protected function validateCommand(CommandInterface $command): void
     {
-        $rules = $command->validationRules();
+        $validationResult = $command->validate();
 
-        if (empty($rules)) {
-            return;
+        if ($validationResult->hasErrors()) {
+            throw new CommandValidationException(
+                $validationResult->getErrors(),
+                'Command validation failed'
+            );
         }
-
-        // TODO: Validation işlemleri burada yapılacak
-        // Framework'ün Validation bileşeni eklendiğinde burada kullanılacak
     }
 
     /**
@@ -195,12 +195,11 @@ class CommandBus implements CommandBusInterface
      * @param CommandHandlerInterface $handler Command handler
      * @param CommandInterface $command İşlenecek command
      * @return callable Middleware'lerle sarılmış handler
-     * @throws \Exception
      */
     protected function decorateWithMiddlewares(CommandHandlerInterface $handler, CommandInterface $command): callable
     {
         // Base handler fonksiyonu
-        $core = static fn(CommandInterface $cmd) => $handler->handle($cmd);
+        $core = fn(CommandInterface $cmd) => $handler->handle($cmd);
 
         // Middleware'leri tersten ekle
         $chain = array_reduce(
