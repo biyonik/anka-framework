@@ -7,6 +7,8 @@ namespace Framework\Core\Application\Bootstrap;
 use Framework\Core\Application\Interfaces\ApplicationInterface;
 use ErrorException;
 use Throwable;
+use Whoops\Handler\PrettyPageHandler;
+use Whoops\Run;
 
 /**
  * Hataları ve istisnaları yöneten bootstrap sınıfı.
@@ -124,9 +126,9 @@ class HandleExceptions implements BootstrapInterface
     protected function renderExceptionWithWhoops(Throwable $e)
     {
         // Whoops varsa kullan
-        if (class_exists(\Whoops\Run::class)) {
-            $whoops = new \Whoops\Run();
-            $whoops->pushHandler(new \Whoops\Handler\PrettyPageHandler());
+        if (class_exists(Run::class)) {
+            $whoops = new Run();
+            $whoops->pushHandler(new PrettyPageHandler());
             $whoops->handleException($e);
             return;
         }
