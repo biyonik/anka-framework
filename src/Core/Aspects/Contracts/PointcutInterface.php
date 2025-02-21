@@ -12,6 +12,7 @@ namespace Framework\Core\Aspects\Contracts;
  *
  * @package Framework\Core\Aspects
  * @subpackage Contracts
+ * @author [Ahmet ALTUN]
  * @version 1.0.0
  * @since 1.0.0
  */
