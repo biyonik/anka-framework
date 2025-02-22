@@ -22,10 +22,11 @@ use Framework\Core\Logging\Processors\WebProcessor;
 
 /**
  * Logger yönetimi için merkezi sınıf.
- */
-
-/**
- * Logger yönetimi için merkezi sınıf.
+ *
+ * @package Framework\Core\Logging
+ * @author [Ahmet ALTUN]
+ * @version 1.0.0
+ * @since 1.0.0
  */
 class LogManager
 {
