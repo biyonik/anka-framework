@@ -27,7 +27,8 @@
         "psr/http-server-middleware": "^1.0.2",
         "filp/whoops": "^2.17.0",
         "ext-openssl": "*",
-        "symfony/yaml": "^v7.2.3"
+        "symfony/yaml": "^v7.2.3",
+        "ext-ftp": "*"
     },
     "require-dev": {
         "phpunit/phpunit": "^10.0",

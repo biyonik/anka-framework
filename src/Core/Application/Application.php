@@ -7,10 +7,9 @@ namespace Framework\Core\Application;
 use Framework\Core\Application\Interfaces\ApplicationInterface;
 use Framework\Core\Application\Bootstrap\BootstrapInterface;
 use Framework\Core\Application\ServiceProvider\ServiceProviderInterface;
-use Framework\Core\Container\Interfaces\ContainerInterface;
+use Framework\Core\Container\Contracts\ContainerInterface;
 use Framework\Core\Container\Container;
 use Framework\Core\Http\Request\Request;
-use Framework\Core\Http\Response\Response;
 use Framework\Core\Routing\Interfaces\RouterInterface;
 use Framework\Core\Routing\Router;
 use Framework\Core\Middleware\MiddlewareDispatcher;
@@ -240,7 +239,7 @@ class Application implements ApplicationInterface
         
         // Router ile eşleştir ve yanıt al
         $response = $this->router->dispatch($request);
-        
+
         // Yanıtı döndür
         return $response;
     }

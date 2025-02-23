@@ -4,9 +4,7 @@ declare(strict_types=1);
 
 namespace Framework\Core\Application\Interfaces;
 
-use Framework\Core\Container\Interfaces\ContainerInterface;
-use Framework\Core\Http\Request\Interfaces\RequestInterface;
-use Framework\Core\Http\Response\Interfaces\ResponseInterface;
+use Framework\Core\Container\Contracts\ContainerInterface;
 use Framework\Core\Routing\Interfaces\RouterInterface;
 use Framework\Core\Middleware\MiddlewareDispatcher;
 use Psr\Http\Message\{ServerRequestInterface, ResponseInterface as PsrResponseInterface};
