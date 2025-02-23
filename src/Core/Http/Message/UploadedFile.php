@@ -220,6 +220,6 @@ class UploadedFile implements UploadedFileInterface
             return false;
         }
 
-        return in_array(strtolower($extension), array_map('strtolower', $extensions));
+        return in_array(strtolower($extension), array_map('strtolower', $extensions), true);
     }
 }
