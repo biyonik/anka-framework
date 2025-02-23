@@ -6,13 +6,17 @@ namespace Framework\Core\Exception;
 
 use Framework\Core\Application\ServiceProvider\AbstractServiceProvider;
 use Framework\Core\Application\Interfaces\ApplicationInterface;
-use Framework\Core\Configuration\Providers\ConfigServiceProvider;
 use Framework\Core\Exception\Contracts\ExceptionHandlerInterface;
 use Framework\Core\Exception\Handlers\{
     GlobalExceptionHandler,
     HttpExceptionHandler,
     ConsoleExceptionHandler
 };
+use Framework\Core\Http\Request\Factory\RequestFactory;
+use Framework\Core\Http\Response\Factory\ResponseFactory;
+use Framework\Core\Configuration\Contracts\ConfigRepositoryInterface;
+use Framework\Core\Logging\Contracts\LoggerInterface;
+use Framework\Core\View\ViewFactory;
 use Framework\Core\Logging\LoggerServiceProvider;
 
 /**
@@ -29,22 +33,19 @@ use Framework\Core\Logging\LoggerServiceProvider;
 class ExceptionServiceProvider extends AbstractServiceProvider
 {
     /**
-     * Exception handler sınıflarını register eder.
+     * {@inheritdoc}
      */
     public function register(ApplicationInterface $app): void
     {
         $container = $app->getContainer();
 
-        // Global handler'ı register et
-        $container->singleton(GlobalExceptionHandler::class);
+        // Handler bağımlılıklarını register et
+        $this->registerHandlerDependencies($container);
 
-        // HTTP handler'ı register et
-        $container->singleton(HttpExceptionHandler::class);
+        // Her bir handler'ı kaydedelim
+        $this->registerHandlers($container);
 
-        // Console handler'ı register et
-        $container->singleton(ConsoleExceptionHandler::class);
-
-        // Ortama göre uygun handler'ı ExceptionHandlerInterface olarak bağla
+        // Ortama göre doğru handler'ı ExceptionHandlerInterface ile bind et
         $container->singleton(ExceptionHandlerInterface::class, function($container) {
             if (PHP_SAPI === 'cli') {
                 return $container->get(ConsoleExceptionHandler::class);
@@ -55,22 +56,21 @@ class ExceptionServiceProvider extends AbstractServiceProvider
     }
 
     /**
-     * Provider'ı boot et.
-     * @throws \ErrorException
+     * {@inheritdoc}
      */
     public function boot(ApplicationInterface $app): void
     {
         $handler = $app->getContainer()->get(ExceptionHandlerInterface::class);
 
         // PHP'nin error handler'ını ayarla
-        set_error_handler(static function ($level, $message, $file = '', $line = 0) {
+        set_error_handler(function ($level, $message, $file = '', $line = 0) {
             if (error_reporting() & $level) {
                 throw new \ErrorException($message, 0, $level, $file, $line);
             }
         });
 
         // Exception handler'ı ayarla
-        set_exception_handler(static function (\Throwable $e) use ($handler) {
+        set_exception_handler(function (\Throwable $e) use ($handler) {
             $handler->handle($e);
         });
 
@@ -90,6 +90,57 @@ class ExceptionServiceProvider extends AbstractServiceProvider
     }
 
     /**
+     * Handler'lar için gerekli bağımlılıkları register eder.
+     */
+    protected function registerHandlerDependencies($container): void
+    {
+        if (!$container->has(RequestFactory::class)) {
+            $container->singleton(RequestFactory::class);
+        }
+
+        if (!$container->has(ResponseFactory::class)) {
+            $container->singleton(ResponseFactory::class);
+        }
+    }
+
+    /**
+     * Exception handler'ları register eder.
+     */
+    protected function registerHandlers($container): void
+    {
+        // Global Handler
+        $container->singleton(GlobalExceptionHandler::class, function($container) {
+            return new GlobalExceptionHandler(
+                $container->get(LoggerInterface::class),
+                $container->get(RequestFactory::class),
+                $container->get(ResponseFactory::class),
+                $container->get(ConfigRepositoryInterface::class)
+            );
+        });
+
+        // HTTP Handler
+        $container->singleton(HttpExceptionHandler::class, function($container) {
+            return new HttpExceptionHandler(
+                $container->get(LoggerInterface::class),
+                $container->get(RequestFactory::class),
+                $container->get(ResponseFactory::class),
+                $container->get(ConfigRepositoryInterface::class),
+                $container->get(ViewFactory::class)
+            );
+        });
+
+        // Console Handler
+        $container->singleton(ConsoleExceptionHandler::class, function($container) {
+            return new ConsoleExceptionHandler(
+                $container->get(LoggerInterface::class),
+                $container->get(RequestFactory::class),
+                $container->get(ResponseFactory::class),
+                $container->get(ConfigRepositoryInterface::class)
+            );
+        });
+    }
+
+    /**
      * Fatal error tiplerini kontrol eder.
      */
     private function isFatalError(int $type): bool
@@ -104,13 +155,14 @@ class ExceptionServiceProvider extends AbstractServiceProvider
     }
 
     /**
-     * Provider'ın bağımlılıkları.
+     * {@inheritdoc}
      */
     public function dependencies(): array
     {
         return [
             LoggerServiceProvider::class,
-            ConfigServiceProvider::class
+            'Framework\Core\Configuration\ConfigServiceProvider',
+            'Framework\Core\View\ViewServiceProvider'
         ];
     }
 }

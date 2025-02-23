@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Framework\Core\Exception\Handlers;
 
-use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\ServerRequestInterface;
 use Throwable;
 use Framework\Core\Http\Request\Factory\RequestFactory;
 use Framework\Core\Http\Response\Factory\ResponseFactory;
@@ -31,14 +29,16 @@ use Framework\Core\Exception\AuthorizationException;
 class HttpExceptionHandler extends AbstractExceptionHandler
 {
     /**
-     * HTTP status kodları ve exception tipleri eşleşmesi.
-     *
-     * @var array<class-string,int>
+     * Hata kodları ve exception tipleri eşleşmesi.
      */
-    protected array $statusCodeMapping = [
-        AuthenticationException::class => 401,
-        AuthorizationException::class => 403,
-        ValidationException::class => 422,
+    protected array $errorViews = [
+        401 => 'errors.401',
+        403 => 'errors.403',
+        404 => 'errors.404',
+        419 => 'errors.419',
+        429 => 'errors.429',
+        500 => 'errors.500',
+        503 => 'errors.503'
     ];
 
     /**
@@ -48,7 +48,8 @@ class HttpExceptionHandler extends AbstractExceptionHandler
         protected LoggerInterface $logger,
         protected RequestFactory $requestFactory,
         protected ResponseFactory $responseFactory,
-        protected ConfigRepositoryInterface $config
+        protected ConfigRepositoryInterface $config,
+        protected ViewFactory $viewFactory
     ) {
         parent::__construct($logger, $requestFactory, $responseFactory);
     }
@@ -56,161 +57,149 @@ class HttpExceptionHandler extends AbstractExceptionHandler
     /**
      * {@inheritdoc}
      */
-    protected function getCurrentRequest(): ServerRequestInterface
-    {
-        return $this->requestFactory->createFromGlobals();
-    }
-
-    /**
-     * {@inheritdoc}
-     */
     public function render(mixed $request, Throwable $e): mixed
     {
-        // Development modunda detaylı hata sayfası
-        if (!$this->config->getEnvironment()->is('production')) {
-            return $this->renderDebugResponse($request, $e);
+        $isProduction = $this->config->getEnvironment()->is('production');
+        $isApiRequest = $request->wantsJson();
+
+        if ($isApiRequest) {
+            return $this->renderApiResponse($e, $isProduction);
         }
 
-        // API isteği için JSON response
-        if (method_exists($request, 'wantsJson') && $request->wantsJson()) {
-            return $this->renderApiResponse($e);
-        }
-
-        // Web isteği için HTML response
-        return $this->renderWebResponse($e);
+        return $this->renderWebResponse($e, $isProduction);
     }
 
     /**
-     * Debug modunda detaylı hata sayfası oluşturur.
+     * API response'u render eder.
      */
-    protected function renderDebugResponse(mixed $request, Throwable $e): mixed
+    protected function renderApiResponse(Throwable $e, bool $isProduction): mixed
     {
-        $data = [
-            'message' => $e->getMessage(),
-            'code' => $this->getStatusCode($e),
-            'exception' => get_class($e),
-            'file' => $e->getFile(),
-            'line' => $e->getLine(),
-            'trace' => $e->getTraceAsString(),
-            'previous' => $e->getPrevious() ? [
-                'message' => $e->getPrevious()->getMessage(),
-                'code' => $e->getPrevious()->getCode(),
-                'file' => $e->getPrevious()->getFile(),
-                'line' => $e->getPrevious()->getLine()
-            ] : null
-        ];
-
-        if (method_exists($request, 'wantsJson') && $request->wantsJson()) {
-            return $this->responseFactory->createJsonResponse(
-                $data,
-                $this->getStatusCode($e)
-            );
-        }
-
-        // Debug HTML sayfası
-        return $this->responseFactory->createHtmlResponse(
-            $this->renderDebugPage($data),
-            $this->getStatusCode($e)
-        );
-    }
-
-    /**
-     * API response oluşturur.
-     */
-    protected function renderApiResponse(Throwable $e): ResponseInterface
-    {
+        $status = $this->getHttpStatusCode($e);
         $data = [
             'error' => true,
-            'message' => $e->getMessage()
+            'message' => $isProduction ? $this->getProductionMessage($status) : $e->getMessage()
         ];
 
-        // ValidationException için hata detayları
         if ($e instanceof ValidationException) {
             $data['errors'] = $e->getErrors();
         }
 
-        return $this->responseFactory->createJsonResponse(
-            $data,
-            $this->getStatusCode($e)
-        );
+        if (!$isProduction) {
+            $data['exception'] = get_class($e);
+            $data['file'] = $e->getFile();
+            $data['line'] = $e->getLine();
+            $data['trace'] = explode("\n", $e->getTraceAsString());
+        }
+
+        return $this->responseFactory->createJsonResponse($data, $status);
     }
 
     /**
-     * Web sayfası response'u oluşturur.
+     * Web response'u render eder.
      */
-    protected function renderWebResponse(Throwable $e): \Framework\Core\Http\Response\Interfaces\ResponseInterface
+    protected function renderWebResponse(Throwable $e, bool $isProduction): mixed
     {
-        $statusCode = $this->getStatusCode($e);
+        $status = $this->getHttpStatusCode($e);
+        $view = $this->getErrorView($status, $isProduction);
 
-        // Basit hata mesajı
-        $content = match ($statusCode) {
-            401 => 'Unauthorized',
-            403 => 'Forbidden',
-            404 => 'Not Found',
-            419 => 'Page Expired',
-            429 => 'Too Many Requests',
-            500 => 'Internal Server Error',
-            503 => 'Service Unavailable',
-            default => 'An error occurred'
-        };
+        $data = [
+            'exception' => $e,
+            'statusCode' => $status,
+            'message' => $isProduction ? $this->getProductionMessage($status) : $e->getMessage(),
+            'isProduction' => $isProduction
+        ];
 
-        return $this->responseFactory->createHtmlResponse(
-            $content,
-            $statusCode
+        if (!$isProduction) {
+            $data = array_merge($data, [
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+                'previous' => $e->getPrevious(),
+                'request' => $this->getCurrentRequest(),
+                'server' => $_SERVER
+            ]);
+
+            // Exception tipine göre özel veriler ekle
+            if ($e instanceof ValidationException) {
+                $data['errors'] = $e->getErrors();
+            } elseif ($e instanceof AuthenticationException) {
+                $data['guards'] = $this->getAuthGuards();
+            } elseif ($e instanceof AuthorizationException) {
+                $data['user'] = $this->getCurrentUser();
+            }
+        }
+
+        return $this->responseFactory->createResponse(
+            $status,
+            $this->viewFactory->make($view, $data)->render()
         );
     }
 
     /**
-     * Exception için uygun HTTP status kodunu döndürür.
+     * HTTP status kodunu belirler.
      */
-    protected function getStatusCode(Throwable $e): int
+    protected function getHttpStatusCode(Throwable $e): int
     {
         if ($e instanceof HttpException) {
             return $e->getStatusCode();
         }
 
-        foreach ($this->statusCodeMapping as $class => $code) {
-            if ($e instanceof $class) {
-                return $code;
-            }
-        }
-
-        return 500;
+        return match (true) {
+            $e instanceof ValidationException => 422,
+            $e instanceof AuthenticationException => 401,
+            $e instanceof AuthorizationException => 403,
+            default => 500
+        };
     }
 
     /**
-     * Debug sayfası HTML'ini oluşturur.
-     *
-     * @param array<string,mixed> $data Debug verisi
+     * Error view'ını belirler.
      */
-    protected function renderDebugPage(array $data): string
+    protected function getErrorView(int $status, bool $isProduction): string
     {
-        // Basit bir debug template
-        $html = '<html><head><title>Error</title>';
-        $html .= '<style>body{font-family:sans-serif;padding:20px;}</style></head>';
-        $html .= '<body><h1>Error: ' . htmlspecialchars($data['message']) . '</h1>';
-        $html .= '<h2>Details</h2>';
-        $html .= '<ul>';
-        $html .= '<li>Code: ' . $data['code'] . '</li>';
-        $html .= '<li>Exception: ' . htmlspecialchars($data['exception']) . '</li>';
-        $html .= '<li>File: ' . htmlspecialchars($data['file']) . '</li>';
-        $html .= '<li>Line: ' . $data['line'] . '</li>';
-        $html .= '</ul>';
-        $html .= '<h2>Stack Trace</h2>';
-        $html .= '<pre>' . htmlspecialchars($data['trace']) . '</pre>';
+        $basePath = $isProduction ? 'errors.production.' : 'errors.development.';
+        return $basePath . ($this->errorViews[$status] ?? '500');
+    }
 
-        if ($data['previous']) {
-            $html .= '<h2>Previous Exception</h2>';
-            $html .= '<ul>';
-            $html .= '<li>Message: ' . htmlspecialchars($data['previous']['message']) . '</li>';
-            $html .= '<li>Code: ' . $data['previous']['code'] . '</li>';
-            $html .= '<li>File: ' . htmlspecialchars($data['previous']['file']) . '</li>';
-            $html .= '<li>Line: ' . $data['previous']['line'] . '</li>';
-            $html .= '</ul>';
-        }
+    /**
+     * Production ortamı için hata mesajını döndürür.
+     */
+    protected function getProductionMessage(int $status): string
+    {
+        return match ($status) {
+            401 => 'Unauthorized',
+            403 => 'Forbidden',
+            404 => 'Not Found',
+            419 => 'Page Expired',
+            429 => 'Too Many Requests',
+            503 => 'Service Unavailable',
+            default => 'Internal Server Error'
+        };
+    }
 
-        $html .= '</body></html>';
+    /**
+     * {@inheritdoc}
+     */
+    protected function getCurrentRequest(): mixed
+    {
+        return $this->requestFactory->createFromGlobals();
+    }
 
-        return $html;
+    /**
+     * Mevcut auth guard'ları döndürür.
+     */
+    protected function getAuthGuards(): array
+    {
+        // Framework'ünüzün auth sistemine göre implemente edilmeli
+        return [];
+    }
+
+    /**
+     * Mevcut kullanıcıyı döndürür.
+     */
+    protected function getCurrentUser(): ?array
+    {
+        // Framework'ünüzün auth sistemine göre implemente edilmeli
+        return null;
     }
 }
